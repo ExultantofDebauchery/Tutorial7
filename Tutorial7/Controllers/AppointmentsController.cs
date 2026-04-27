@@ -32,5 +32,19 @@ namespace Tutorial7.Controllers
             }
             return Ok(appointment);
         }
+
+        [HttpPost]
+        public async Task<IActionResult> CreateAppointment(CreateAppointmentRequestDto createAppointmentRequestDto)
+        {
+            try
+            {
+                var id=await _appointmentsService.CreateAppointmentAsync(createAppointmentRequestDto);
+                return Created($"api/Appointments/{id}",new{id});
+            }
+            catch (Exception e)
+            {
+                return Conflict(e.Message);
+            }
+        }
     }
 }

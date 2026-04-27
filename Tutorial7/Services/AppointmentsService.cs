@@ -1,5 +1,6 @@
 ﻿using System.Data;
 using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
 using Tutorial7.DTOs;
 
 namespace Tutorial7.Services;
@@ -75,5 +76,38 @@ FROM Appointments a join Patients p on p.IdPatient=a.IdPatient join Doctors d on
             DoctorLicenseNumber = reader.GetString(8),
 
         };
+    }
+
+    public async Task<int> CreateAppointmentAsync(CreateAppointmentRequestDto request)
+    {
+        if (request.AppointmentDate < DateTime.Now)
+        {
+            throw new Exception("River of time flows only forward.Appointment cannot set in past");
+        }
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+        await using (var command =
+                     new SqlCommand(
+                         @"Select count(*) from Appointments where IdDoctor=@IdDoctor and AppointmentDate=@Date",
+                         connection))
+        {
+            command.Parameters.AddWithValue("@IdDoctor", request.IdDoctor);
+            command.Parameters.AddWithValue("@Date", request.AppointmentDate);
+            var count=(int)await  command.ExecuteScalarAsync();
+            if (count > 0)
+            {
+                throw new Exception("Doctor is busy at this time.");
+            }
+        }
+
+        await using var command2 = new SqlCommand(
+            @"Insert into Appointments (IdPatient,IdDoctor,AppointmentDate,Reason,Status)
+Values (@IdPatient,@IdDoctor,@Date,@Reason,'Scheduled');SELECT SCOPE_IDENTITY()",connection);
+        command2.Parameters.AddWithValue("@IdPatient", request.IdPatient);
+        command2.Parameters.AddWithValue("@IdDoctor", request.IdDoctor);
+        command2.Parameters.AddWithValue("@Date", request.AppointmentDate);
+        command2.Parameters.AddWithValue("@Reason",request.Reason);
+        var id=Convert.ToInt32(await command2.ExecuteScalarAsync());
+        return id;
     }
 }
