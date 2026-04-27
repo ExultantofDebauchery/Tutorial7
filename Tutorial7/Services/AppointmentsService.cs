@@ -15,7 +15,7 @@ public class AppointmentsService : IAppointmentsService
     
     public async Task<IEnumerable<AppointmentListDto>> GetAllAppointmentsAsync(string? status,string? patientLastName)
     {
-        var query = "SELECT IdAppointment, Status FROM Appointments";
+        // var query = "SELECT IdAppointment, Status FROM Appointments";
         
         await using var connection = new SqlConnection(_connectionString);
         await connection.OpenAsync();
@@ -45,5 +45,35 @@ FROM Appointments a join Patients p on p.IdPatient=a.IdPatient where (@Status is
         }
         
         return appointments;
+    }
+
+    public async Task<AppointmentDetailsDto?> GetAppointmentByIdAsync(int idAppointment)
+    {
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var command = new SqlCommand(
+            @"SELECT a.IdAppointment,a.AppointmentDate,a.Status,a.Reason,a.InternalNotes,p.FirstName+' '+p.LastName as PatientFullName,p.Email as PatientEmail
+,d.FirstName+' '+d.LastName as DoctorFullName,d.LicenseNumber
+FROM Appointments a join Patients p on p.IdPatient=a.IdPatient join Doctors d on d.IdDoctor=a.IdDoctor where a.IdAppointment=@IdAppointment",connection);
+        command.Parameters.AddWithValue("@idAppointment", idAppointment);
+        await using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+        {
+            return null;
+        }
+
+        return new AppointmentDetailsDto
+        {
+            IdAppointment = reader.GetInt32(0),
+            AppointmentDate = reader.GetDateTime(1),
+            Status = reader.GetString(2),
+            Reason = reader.GetString(3),
+            InternalNotes = reader.IsDBNull(4) ? null : reader.GetString(4),
+            PatientFullName = reader.GetString(5),
+            PatientEmail = reader.GetString(6),
+            DoctorFullName = reader.GetString(7),
+            DoctorLicenseNumber = reader.GetString(8),
+
+        };
     }
 }

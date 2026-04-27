@@ -22,5 +22,15 @@ namespace Tutorial7.Controllers
             var appointments = await _appointmentsService.GetAllAppointmentsAsync(status, patientLastName);
             return Ok(appointments);
         }
+
+        [HttpGet("{idAppointment}")]
+        public async Task<IActionResult> GetByIdAppointment(int idAppointment)
+        {
+            var appointment=await _appointmentsService.GetAppointmentByIdAsync(idAppointment);
+            if(appointment is null){
+                return NotFound();
+            }
+            return Ok(appointment);
+        }
     }
 }
