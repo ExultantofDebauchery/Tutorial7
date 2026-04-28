@@ -46,5 +46,42 @@ namespace Tutorial7.Controllers
                 return Conflict(e.Message);
             }
         }
+
+        [HttpPut("{idAppointment}")]
+        public async Task<IActionResult> UpdateAppointment(int idAppointment,
+            UpdateAppointmentRequestDto updateAppointmentRequestDto)
+        {
+            try
+            {
+            var updateAppointmentRequest=await _appointmentsService.UpdateAppointmentAsync(idAppointment,updateAppointmentRequestDto);
+            if(!updateAppointmentRequest)
+            {
+                return NotFound();
+            }
+            return Ok();
+            }
+            catch (Exception e)
+            {
+                return Conflict(e.Message);
+            }
+        }
+
+        [HttpDelete("{idAppointment}")]
+        public async Task<IActionResult> DeleteAppointment(int idAppointment)
+        {
+            try
+            {
+            var deleteAppointmentRequest=await _appointmentsService.DeleteAppointmentAsync(idAppointment);
+            if (!deleteAppointmentRequest)
+            {
+                return NotFound();
+            }
+            return NoContent();
+            }
+            catch (Exception e)
+            {
+                return Conflict(e.Message);
+            }
+        }
     }
 }

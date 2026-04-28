@@ -110,4 +110,76 @@ Values (@IdPatient,@IdDoctor,@Date,@Reason,'Scheduled');SELECT SCOPE_IDENTITY()"
         var id=Convert.ToInt32(await command2.ExecuteScalarAsync());
         return id;
     }
+
+    public async Task<bool> UpdateAppointmentAsync(int idAppointment,UpdateAppointmentRequestDto updateAppointmentRequestDto)
+    {
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+        await using (var check = new SqlCommand("Select Status from Appointments where IdAppointment=@Id", connection))
+        {
+            check.Parameters.AddWithValue("@Id",idAppointment);
+            var currentStatus = await check.ExecuteScalarAsync();
+            if (currentStatus == null)
+            {
+                return false;
+            }
+            var currStatus=currentStatus.ToString();
+            if (currStatus == "Completed")
+            {
+                throw new Exception("You cannot modify completed appointment");
+            }
+            await using(var conflict =new SqlCommand(@"Select count(*) from Appointments where IdDoctor=@IdDoctor AND AppointmentDate=@Date 
+and IdAppointment <>@Id",connection))
+            {
+                conflict.Parameters.AddWithValue("@IdDoctor",updateAppointmentRequestDto.IdDoctor);
+                conflict.Parameters.AddWithValue("@Date",updateAppointmentRequestDto.AppointmentDate);
+                conflict.Parameters.AddWithValue("@Id",idAppointment);
+                var count=(int)await  conflict.ExecuteScalarAsync();
+                if (count > 0)
+                {
+                    throw new Exception("Doctor has conflicting appointment.");
+                }
+            }
+        }
+
+        await using var command = new SqlCommand(
+            @"update Appointments set IdPatient=@IdPatient,IdDoctor=@IdDoctor,AppointmentDate=@Date,
+                        Status=@Status,Reason=@Reason,InternalNotes=@InternalNotes where IdAppointment=@Id",
+            connection);
+        command.Parameters.AddWithValue("@IdDoctor", updateAppointmentRequestDto.IdDoctor);
+        command.Parameters.AddWithValue("@IdPatient", updateAppointmentRequestDto.IdPatient);
+        command.Parameters.AddWithValue("@Id",idAppointment);
+        command.Parameters.AddWithValue("@Status",updateAppointmentRequestDto.Status);
+        command.Parameters.AddWithValue("@Reason",updateAppointmentRequestDto.Reason);
+        command.Parameters.AddWithValue("@InternalNotes",(object?)updateAppointmentRequestDto.InternalNotes??DBNull.Value);
+        command.Parameters.AddWithValue("@Date",updateAppointmentRequestDto.AppointmentDate);
+        await command.ExecuteNonQueryAsync();
+        return true;
+    }
+
+    public async Task<bool> DeleteAppointmentAsync(int idAppointment)
+    {
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+        await using (var check = new SqlCommand("Select Status from Appointments where IdAppointment=@Id", connection))
+        {
+            check.Parameters.AddWithValue("@Id", idAppointment);
+            var currentStatus = await check.ExecuteScalarAsync();
+            if (currentStatus == null)
+            {
+                return false;
+            }
+
+            var currStatus = currentStatus.ToString();
+            if (currStatus == "Completed")
+            {
+                throw new Exception("You cannot delete completed appointment");
+            }
+        }
+
+        await using var command = new SqlCommand(@"Delete from Appointments where IdAppointment=@Id", connection);
+        command.Parameters.AddWithValue("@Id", idAppointment);
+        await command.ExecuteNonQueryAsync();
+        return true;
+    }
 }
