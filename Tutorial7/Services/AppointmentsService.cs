@@ -1,6 +1,5 @@
 ﻿using System.Data;
 using Microsoft.Data.SqlClient;
-using Microsoft.EntityFrameworkCore;
 using Tutorial7.DTOs;
 
 namespace Tutorial7.Services;
@@ -82,10 +81,29 @@ FROM Appointments a join Patients p on p.IdPatient=a.IdPatient join Doctors d on
     {
         if (request.AppointmentDate < DateTime.Now)
         {
-            throw new Exception("River of time flows only forward.Appointment cannot set in past");
+            throw new ArgumentException("River of time flows only forward.Appointment cannot be set in past");
+        }
+
+        if (request.Reason.Length > 250 || string.IsNullOrWhiteSpace(request.Reason))
+        {
+            throw new ArgumentException("Reason is invalid");
         }
         await using var connection = new SqlConnection(_connectionString);
         await connection.OpenAsync();
+        await using var checkPatient =new SqlCommand(@"Select count(*) from Patients where IdPatient=@Id and IsActive=1", connection);
+        checkPatient.Parameters.AddWithValue("@Id", request.IdPatient);
+        var patexists=(int)await  checkPatient.ExecuteScalarAsync();
+        if (patexists == 0)
+        {
+            throw new ArgumentException("Patient is inactive or doesn't exist");
+        }
+        await using var checkDoctor=new SqlCommand("Select count(*) from Doctors where IdDoctor=@Id and IsActive=1", connection);
+        checkDoctor.Parameters.AddWithValue("@Id", request.IdDoctor);
+        var doctorexists=(int)await  checkDoctor.ExecuteScalarAsync();
+        if (doctorexists == 0)
+        {
+            throw new ArgumentException("Doctor is inactive or doesn't exist");
+        }
         await using (var command =
                      new SqlCommand(
                          @"Select count(*) from Appointments where IdDoctor=@IdDoctor and AppointmentDate=@Date",
@@ -96,7 +114,7 @@ FROM Appointments a join Patients p on p.IdPatient=a.IdPatient join Doctors d on
             var count=(int)await  command.ExecuteScalarAsync();
             if (count > 0)
             {
-                throw new Exception("Doctor is busy at this time.");
+                throw new InvalidOperationException("Doctor is busy at this time.");
             }
         }
 
@@ -111,10 +129,37 @@ Values (@IdPatient,@IdDoctor,@Date,@Reason,'Scheduled');SELECT SCOPE_IDENTITY()"
         return id;
     }
 
-    public async Task<bool> UpdateAppointmentAsync(int idAppointment,UpdateAppointmentRequestDto updateAppointmentRequestDto)
+    public async Task<bool> UpdateAppointmentAsync(int idAppointment,UpdateAppointmentRequestDto request)
     {
         await using var connection = new SqlConnection(_connectionString);
         await connection.OpenAsync();
+        if (request.AppointmentDate < DateTime.Now)
+        {
+            throw new ArgumentException("River of time flows only forward.Appointment cannot be set in past");
+        }
+        if (request.Reason.Length > 250 || string.IsNullOrWhiteSpace(request.Reason))
+        {
+            throw new ArgumentException("Reason is invalid");
+        }
+        await using var checkPatient =new SqlCommand(@"Select count(*) from Patients where IdPatient=@Id and IsActive=1", connection);
+        checkPatient.Parameters.AddWithValue("@Id", request.IdPatient);
+        var patexists=(int)await  checkPatient.ExecuteScalarAsync();
+        if (patexists == 0)
+        {
+            throw new ArgumentException("Patient is inactive or doesn't exist");
+        }
+        await using var checkDoctor=new SqlCommand("Select count(*) from Doctors where IdDoctor=@Id and IsActive=1", connection);
+        checkDoctor.Parameters.AddWithValue("@Id", request.IdDoctor);
+        var doctorexists=(int)await  checkDoctor.ExecuteScalarAsync();
+        if (doctorexists == 0)
+        {
+            throw new ArgumentException("Doctor is inactive or doesn't exist");
+        }
+        var validStatuses=new []{"Completed","Cancelled","Scheduled"};
+        if (!validStatuses.Contains(request.Status))
+        {
+            throw new InvalidOperationException("Status is invalid");
+        }
         await using (var check = new SqlCommand("Select Status from Appointments where IdAppointment=@Id", connection))
         {
             check.Parameters.AddWithValue("@Id",idAppointment);
@@ -126,18 +171,18 @@ Values (@IdPatient,@IdDoctor,@Date,@Reason,'Scheduled');SELECT SCOPE_IDENTITY()"
             var currStatus=currentStatus.ToString();
             if (currStatus == "Completed")
             {
-                throw new Exception("You cannot modify completed appointment");
+                throw new InvalidOperationException("You cannot modify completed appointment");
             }
             await using(var conflict =new SqlCommand(@"Select count(*) from Appointments where IdDoctor=@IdDoctor AND AppointmentDate=@Date 
 and IdAppointment <>@Id",connection))
             {
-                conflict.Parameters.AddWithValue("@IdDoctor",updateAppointmentRequestDto.IdDoctor);
-                conflict.Parameters.AddWithValue("@Date",updateAppointmentRequestDto.AppointmentDate);
+                conflict.Parameters.AddWithValue("@IdDoctor",request.IdDoctor);
+                conflict.Parameters.AddWithValue("@Date",request.AppointmentDate);
                 conflict.Parameters.AddWithValue("@Id",idAppointment);
                 var count=(int)await  conflict.ExecuteScalarAsync();
                 if (count > 0)
                 {
-                    throw new Exception("Doctor has conflicting appointment.");
+                    throw new InvalidOperationException("Doctor has conflicting appointment.");
                 }
             }
         }
@@ -146,13 +191,13 @@ and IdAppointment <>@Id",connection))
             @"update Appointments set IdPatient=@IdPatient,IdDoctor=@IdDoctor,AppointmentDate=@Date,
                         Status=@Status,Reason=@Reason,InternalNotes=@InternalNotes where IdAppointment=@Id",
             connection);
-        command.Parameters.AddWithValue("@IdDoctor", updateAppointmentRequestDto.IdDoctor);
-        command.Parameters.AddWithValue("@IdPatient", updateAppointmentRequestDto.IdPatient);
+        command.Parameters.AddWithValue("@IdDoctor", request.IdDoctor);
+        command.Parameters.AddWithValue("@IdPatient", request.IdPatient);
         command.Parameters.AddWithValue("@Id",idAppointment);
-        command.Parameters.AddWithValue("@Status",updateAppointmentRequestDto.Status);
-        command.Parameters.AddWithValue("@Reason",updateAppointmentRequestDto.Reason);
-        command.Parameters.AddWithValue("@InternalNotes",(object?)updateAppointmentRequestDto.InternalNotes??DBNull.Value);
-        command.Parameters.AddWithValue("@Date",updateAppointmentRequestDto.AppointmentDate);
+        command.Parameters.AddWithValue("@Status",request.Status);
+        command.Parameters.AddWithValue("@Reason",request.Reason);
+        command.Parameters.AddWithValue("@InternalNotes",(object?)request.InternalNotes??DBNull.Value);
+        command.Parameters.AddWithValue("@Date",request.AppointmentDate);
         await command.ExecuteNonQueryAsync();
         return true;
     }
@@ -173,7 +218,7 @@ and IdAppointment <>@Id",connection))
             var currStatus = currentStatus.ToString();
             if (currStatus == "Completed")
             {
-                throw new Exception("You cannot delete completed appointment");
+                throw new InvalidOperationException("You cannot delete completed appointment");
             }
         }
 

@@ -28,7 +28,7 @@ namespace Tutorial7.Controllers
         {
             var appointment=await _appointmentsService.GetAppointmentByIdAsync(idAppointment);
             if(appointment is null){
-                return NotFound();
+                return NotFound(new ErrorResponseDto {Message = "Appointment not found"});
             }
             return Ok(appointment);
         }
@@ -38,12 +38,16 @@ namespace Tutorial7.Controllers
         {
             try
             {
-                var id=await _appointmentsService.CreateAppointmentAsync(createAppointmentRequestDto);
-                return Created($"api/Appointments/{id}",new{id});
+                var id = await _appointmentsService.CreateAppointmentAsync(createAppointmentRequestDto);
+                return Created($"api/Appointments/{id}", new { id });
             }
-            catch (Exception e)
+            catch (ArgumentException e)
             {
-                return Conflict(e.Message);
+                return BadRequest(new ErrorResponseDto {Message = e.Message});
+            }
+            catch (InvalidOperationException e)
+            {
+                return Conflict(new ErrorResponseDto {Message = e.Message});
             }
         }
 
@@ -53,16 +57,22 @@ namespace Tutorial7.Controllers
         {
             try
             {
-            var updateAppointmentRequest=await _appointmentsService.UpdateAppointmentAsync(idAppointment,updateAppointmentRequestDto);
-            if(!updateAppointmentRequest)
-            {
-                return NotFound();
+                var updateAppointmentRequest =
+                    await _appointmentsService.UpdateAppointmentAsync(idAppointment, updateAppointmentRequestDto);
+                if (!updateAppointmentRequest)
+                {
+                    return NotFound(new ErrorResponseDto { Message = "Appointment not found" });
+                }
+
+                return Ok();
             }
-            return Ok();
-            }
-            catch (Exception e)
+            catch(ArgumentException e)
             {
-                return Conflict(e.Message);
+                return BadRequest(new ErrorResponseDto {Message = e.Message});
+            }
+            catch (InvalidOperationException e)
+            {
+                return Conflict(new ErrorResponseDto {Message = e.Message});
             }
         }
 
@@ -74,13 +84,13 @@ namespace Tutorial7.Controllers
             var deleteAppointmentRequest=await _appointmentsService.DeleteAppointmentAsync(idAppointment);
             if (!deleteAppointmentRequest)
             {
-                return NotFound();
+                return NotFound(new ErrorResponseDto{Message = "Appointment not found"});
             }
             return NoContent();
             }
-            catch (Exception e)
+            catch (InvalidOperationException e)
             {
-                return Conflict(e.Message);
+                return Conflict(new ErrorResponseDto {Message = e.Message});
             }
         }
     }
